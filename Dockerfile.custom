@@ -13,9 +13,15 @@ RUN apt-get -q update \
         build-essential libssl-dev libffi-dev zlib1g-dev ffmpeg curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install yt-dlp as standalone binary (not pip - avoids Python version conflicts)
-RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
-    && chmod a+rx /usr/local/bin/yt-dlp
+# Install yt-dlp as fully self-contained binary (bundles its own Python,
+# no dependency on system Python version)
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "amd64" ]; then \
+      curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux -o /usr/local/bin/yt-dlp; \
+    elif [ "$ARCH" = "arm64" ]; then \
+      curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux_aarch64 -o /usr/local/bin/yt-dlp; \
+    fi && \
+    chmod a+rx /usr/local/bin/yt-dlp
 
 # Create project root
 RUN mkdir -p $PROJECT_ROOT
