@@ -317,6 +317,7 @@ class MusicHttpServer:
 			else:
 				proc = await asyncio.create_subprocess_exec(
 					self.ffmpeg_path, '-i', temp_path,
+					'-vn',  # Strip video/cover art streams.
 					'-c:a', 'libvorbis', '-q:a', '4',
 					'-y', ogg_path,
 					stdout=asyncio.subprocess.PIPE,

@@ -50,6 +50,7 @@ async def download_audio(url, output_dir, yt_dlp_path='yt-dlp', ffmpeg_path='ffm
 		'--match-filter', 'duration <= {}'.format(max_duration),
 		'--ffmpeg-location', resolved_ffmpeg,
 		'--output', output_template,
+		'--no-embed-thumbnail',
 		'--no-warnings',
 		'--quiet',
 		url,
