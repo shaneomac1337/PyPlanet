@@ -142,6 +142,9 @@ class MusicServer(AppConfig):
 		# Load songs from settings.
 		self.songs = await self.get_songs()
 
+		# Load any previously uploaded/downloaded songs from disk.
+		await self._load_songs_from_disk()
+
 		# Initialize views.
 		self.list_view = MusicListView(self)
 		self.playlist_view = PlaylistView(self)
@@ -281,6 +284,39 @@ class MusicServer(AppConfig):
 		except Exception as e:
 			logger.error('[Music] Failed to start HTTP server: %s', e)
 			self.http_server = None
+
+	async def _load_songs_from_disk(self):
+		"""Load existing .ogg files from the music download directory into rotation."""
+		download_dir = await self.setting_yt_download_dir.get_value()
+		if not os.path.isdir(download_dir):
+			return
+
+		# Get public URL prefix (need HTTP server to be initialized first, but settings are available).
+		public_url = await self.setting_http_public_url.get_value()
+		if not public_url:
+			return
+
+		public_url = public_url.rstrip('/')
+		existing_urls = {song[0] for song in self.songs}
+		loaded = 0
+
+		from .youtube import get_file_tags
+
+		for filename in sorted(os.listdir(download_dir)):
+			if not filename.endswith('.ogg'):
+				continue
+			song_url = '{}/music/{}'.format(public_url, filename)
+			if song_url in existing_urls:
+				continue
+			filepath = os.path.join(download_dir, filename)
+			tags = get_file_tags(filepath)
+			if tags.get('title') == 'Unknown':
+				tags['title'] = os.path.splitext(filename)[0]
+			self.songs.append((song_url, tags))
+			loaded += 1
+
+		if loaded:
+			logger.info('[Music] Loaded %d songs from disk.', loaded)
 
 	async def _on_song_uploaded(self, song_url, tags):
 		"""Callback from HTTP server when a song is uploaded via web UI."""
