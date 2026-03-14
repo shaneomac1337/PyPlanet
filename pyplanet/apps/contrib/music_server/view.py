@@ -346,12 +346,12 @@ class SongManagerView(ManualListView):
 	async def action_delete(self, player, values, song_info, *args, **kwargs):
 		"""Confirm and delete a song."""
 		title = song_info.get('song_name', 'this song')
-		confirmed = await ask_confirmation(
+		reaction = await ask_confirmation(
 			player,
 			'Delete "$fff{}$z$s" from the song library?'.format(title),
 			size='sm',
 		)
-		if confirmed:
+		if reaction == 0:  # 0 = Yes button
 			await self.app.remove_song(song_info['song_url'])
 			await self.app.instance.chat(
 				'$ff0Removed: $fff{}'.format(title), player)
