@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import shutil
 
 from tinytag import TinyTag
 from io import BytesIO
@@ -34,6 +35,9 @@ async def download_audio(url, output_dir, yt_dlp_path='yt-dlp', ffmpeg_path='ffm
 	"""
 	os.makedirs(output_dir, exist_ok=True)
 
+	# Resolve ffmpeg to absolute path (standalone yt-dlp can't find it on PATH).
+	resolved_ffmpeg = shutil.which(ffmpeg_path) or ffmpeg_path
+
 	# Use yt-dlp to download and extract audio, let ffmpeg convert to vorbis ogg.
 	output_template = os.path.join(output_dir, '%(id)s.%(ext)s')
 	cmd = [
@@ -42,9 +46,9 @@ async def download_audio(url, output_dir, yt_dlp_path='yt-dlp', ffmpeg_path='ffm
 		'--extract-audio',
 		'--audio-format', 'vorbis',
 		'--audio-quality', '5',
-		'--max-filesize', max_filesize,
+		'--max-filesize', str(max_filesize),
 		'--match-filter', 'duration <= {}'.format(max_duration),
-		'--ffmpeg-location', ffmpeg_path,
+		'--ffmpeg-location', resolved_ffmpeg,
 		'--output', output_template,
 		'--no-warnings',
 		'--quiet',
