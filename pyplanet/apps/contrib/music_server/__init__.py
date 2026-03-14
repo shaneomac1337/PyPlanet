@@ -142,9 +142,6 @@ class MusicServer(AppConfig):
 		# Load songs from settings.
 		self.songs = await self.get_songs()
 
-		# Load any previously uploaded/downloaded songs from disk.
-		await self._load_songs_from_disk()
-
 		# Initialize views.
 		self.list_view = MusicListView(self)
 		self.playlist_view = PlaylistView(self)
@@ -212,6 +209,9 @@ class MusicServer(AppConfig):
 
 		# Probe and start HTTP server.
 		await self._init_http_server()
+
+		# Load any previously uploaded/downloaded songs from disk.
+		await self._load_songs_from_disk()
 
 		# Cleanup old YouTube downloads.
 		cleanup_days = await self.setting_yt_cleanup_after_days.get_value()
