@@ -10,16 +10,20 @@ logger = logging.getLogger(__name__)
 
 async def check_binary(path):
 	"""Check if a binary exists and is executable."""
-	try:
-		proc = await asyncio.create_subprocess_exec(
-			path, '--version',
-			stdout=asyncio.subprocess.PIPE,
-			stderr=asyncio.subprocess.PIPE,
-		)
-		await asyncio.wait_for(proc.communicate(), timeout=5)
-		return proc.returncode == 0
-	except Exception:
-		return False
+	# Try -version first (ffmpeg uses single dash), then --version (yt-dlp).
+	for flag in ['-version', '--version']:
+		try:
+			proc = await asyncio.create_subprocess_exec(
+				path, flag,
+				stdout=asyncio.subprocess.PIPE,
+				stderr=asyncio.subprocess.PIPE,
+			)
+			await asyncio.wait_for(proc.communicate(), timeout=5)
+			if proc.returncode == 0:
+				return True
+		except Exception:
+			continue
+	return False
 
 
 async def download_audio(url, output_dir, yt_dlp_path='yt-dlp', ffmpeg_path='ffmpeg',
