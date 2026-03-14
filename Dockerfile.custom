@@ -1,0 +1,47 @@
+FROM python:3.8
+LABEL maintainer="Custom PyPlanet with Music Server overhaul"
+ENV PROJECT_ROOT /app
+ENV IS_DOCKER 1
+
+# Create maniaplanet user/group
+RUN addgroup --gid 1000 maniaplanet && \
+    adduser -u 1000 --group maniaplanet --system
+
+# Install system dependencies + yt-dlp + ffmpeg for music server
+RUN apt-get -q update \
+    && apt-get install -y --no-install-recommends \
+        build-essential libssl-dev libffi-dev zlib1g-dev ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install yt-dlp (latest stable)
+RUN pip install --no-cache-dir yt-dlp
+
+# Create project root
+RUN mkdir -p $PROJECT_ROOT
+WORKDIR $PROJECT_ROOT
+
+# Copy the full PyPlanet source and install from source
+COPY . /pyplanet-src/
+RUN pip install --no-cache-dir /pyplanet-src/ && rm -rf /pyplanet-src/
+
+# Copy docker base config
+COPY docs/docker/root/base.py $PROJECT_ROOT/base.py
+RUN chown -R maniaplanet:maniaplanet $PROJECT_ROOT
+
+USER maniaplanet
+
+# Init project
+RUN pyplanet init_project server
+WORKDIR $PROJECT_ROOT/server/
+RUN cp ../base.py $PROJECT_ROOT/server/settings/base.py
+
+# Create music download directory
+RUN mkdir -p $PROJECT_ROOT/server/music
+
+VOLUME $PROJECT_ROOT/server/
+
+# Expose HTTP music server port (configurable via settings)
+EXPOSE 8080
+
+ENTRYPOINT [ "python3", "manage.py" ]
+CMD [ "start", "--pool=default", "--settings=settings" ]
