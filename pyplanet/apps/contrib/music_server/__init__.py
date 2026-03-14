@@ -470,8 +470,14 @@ class MusicServer(AppConfig):
 	# ---- Force next song ----
 
 	async def force_next_song(self, player, data, **kwargs):
-		"""Admin command to immediately switch to the next song mid-map."""
+		"""Admin command to immediately switch to the next song mid-map.
+		Forces a map restart so the game client reloads the music."""
 		await self._play_next_now()
+		# Force map restart so the client picks up the new music URL.
+		try:
+			await self.instance.gbx('RestartMap')
+		except Exception as e:
+			logger.warning('[Music] Could not restart map: %s', e)
 
 	# ---- Vote-skip ----
 
