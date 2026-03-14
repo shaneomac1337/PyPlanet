@@ -282,6 +282,7 @@ class MusicServer(AppConfig):
 				upload_password=upload_password,
 				ffmpeg_path=ffmpeg_path,
 				on_song_uploaded=self._on_song_uploaded,
+				on_tags_updated=self._on_tags_updated,
 			)
 		except Exception as e:
 			logger.error('[Music] Failed to start HTTP server: %s', e)
@@ -319,6 +320,14 @@ class MusicServer(AppConfig):
 
 		if loaded:
 			logger.info('[Music] Loaded %d songs from disk.', loaded)
+
+	async def _on_tags_updated(self, song_url, tags):
+		"""Callback from HTTP server when tags are edited via web UI."""
+		for i, (url, _) in enumerate(self.songs):
+			if url == song_url:
+				self.songs[i] = (url, tags)
+				logger.info('[Music] Tags updated in rotation: %s by %s', tags.get('title'), tags.get('artist'))
+				return
 
 	async def _on_song_uploaded(self, song_url, tags):
 		"""Callback from HTTP server when a song is uploaded via web UI."""
