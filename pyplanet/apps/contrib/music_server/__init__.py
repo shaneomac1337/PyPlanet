@@ -132,6 +132,11 @@ class MusicServer(AppConfig):
 			description='Auto-delete downloaded files after N days (0 = never).',
 			default=7,
 		)
+		self.setting_upload_password = Setting(
+			'upload_password', 'Upload password', Setting.CAT_BEHAVIOUR, type=str,
+			description='Password for the web upload page. Leave empty for no auth.',
+			default='',
+		)
 
 	async def on_start(self):
 		# Load songs from settings.
@@ -160,6 +165,7 @@ class MusicServer(AppConfig):
 			self.setting_yt_max_duration,
 			self.setting_yt_max_filesize,
 			self.setting_yt_cleanup_after_days,
+			self.setting_upload_password,
 		)
 
 		# Register base permissions.
@@ -261,12 +267,25 @@ class MusicServer(AppConfig):
 		public_url = await self.setting_http_public_url.get_value()
 		download_dir = await self.setting_yt_download_dir.get_value()
 
+		upload_password = await self.setting_upload_password.get_value()
+		ffmpeg_path = await self.setting_ffmpeg_path.get_value()
+
 		try:
 			self.http_server = MusicHttpServer()
-			await self.http_server.start(host, port, download_dir, public_url)
+			await self.http_server.start(
+				host, port, download_dir, public_url,
+				upload_password=upload_password,
+				ffmpeg_path=ffmpeg_path,
+				on_song_uploaded=self._on_song_uploaded,
+			)
 		except Exception as e:
 			logger.error('[Music] Failed to start HTTP server: %s', e)
 			self.http_server = None
+
+	async def _on_song_uploaded(self, song_url, tags):
+		"""Callback from HTTP server when a song is uploaded via web UI."""
+		self.songs.append((song_url, tags))
+		logger.info('[Music] Web upload added to rotation: %s by %s', tags.get('title'), tags.get('artist'))
 
 	# ---- Song list & playlist ----
 
