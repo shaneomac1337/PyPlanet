@@ -59,7 +59,7 @@ async def fetch_yt_metadata(url, yt_dlp_path='yt-dlp'):
 
 
 async def download_audio(url, output_dir, yt_dlp_path='yt-dlp', ffmpeg_path='ffmpeg',
-						 max_duration=600, max_filesize='50M'):
+						 max_duration=600, max_filesize='50M', volume_boost_db=0):
 	"""Download audio from a URL using yt-dlp and convert to .ogg vorbis.
 
 	Returns (filepath, tags_dict) on success, raises on failure.
@@ -110,6 +110,10 @@ async def download_audio(url, output_dir, yt_dlp_path='yt-dlp', ffmpeg_path='ffm
 	ogg_files.sort(key=lambda f: os.path.getmtime(os.path.join(output_dir, f)), reverse=True)
 	filepath = os.path.join(output_dir, ogg_files[0])
 
+	# Boost volume if configured.
+	if volume_boost_db and volume_boost_db != 0:
+		await boost_volume(filepath, volume_boost_db, resolved_ffmpeg)
+
 	# Use yt-dlp metadata if available, fall back to file tags.
 	if yt_tags and yt_tags.get('title') != 'Unknown':
 		tags = yt_tags
@@ -147,6 +151,36 @@ async def write_ogg_tags(filepath, tags, ffmpeg_path='ffmpeg'):
 				os.remove(temp_path)
 	except Exception as e:
 		logger.warning('Failed to write tags to %s: %s', filepath, e)
+		if os.path.exists(temp_path):
+			os.remove(temp_path)
+
+
+async def boost_volume(filepath, db_boost, ffmpeg_path='ffmpeg'):
+	"""Boost audio volume by the specified dB amount using ffmpeg."""
+	temp_path = filepath + '.boost.ogg'
+	cmd = [
+		ffmpeg_path, '-i', filepath,
+		'-vn',
+		'-af', 'volume={}dB'.format(db_boost),
+		'-c:a', 'libvorbis', '-q:a', '4',
+		'-y', temp_path,
+	]
+	try:
+		proc = await asyncio.create_subprocess_exec(
+			*cmd,
+			stdout=asyncio.subprocess.PIPE,
+			stderr=asyncio.subprocess.PIPE,
+		)
+		await asyncio.wait_for(proc.communicate(), timeout=60)
+		if proc.returncode == 0 and os.path.isfile(temp_path):
+			os.replace(temp_path, filepath)
+			logger.info('Volume boosted by %sdB: %s', db_boost, filepath)
+		else:
+			if os.path.exists(temp_path):
+				os.remove(temp_path)
+			logger.warning('Volume boost failed for %s', filepath)
+	except Exception as e:
+		logger.warning('Volume boost error for %s: %s', filepath, e)
 		if os.path.exists(temp_path):
 			os.remove(temp_path)
 

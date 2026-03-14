@@ -267,17 +267,19 @@ class MusicHttpServer:
 		self.public_url = ''
 		self.upload_password = ''
 		self.ffmpeg_path = 'ffmpeg'
+		self.volume_boost_db = 0
 		self.on_song_uploaded = None
 		self.on_tags_updated = None  # Callback when tags are edited.
 		self._sessions = {}
 
 	async def start(self, host, port, directory, public_url='', upload_password='',
-					ffmpeg_path='ffmpeg', on_song_uploaded=None, on_tags_updated=None):
+					ffmpeg_path='ffmpeg', volume_boost_db=0, on_song_uploaded=None, on_tags_updated=None):
 		"""Start the HTTP server."""
 		self.directory = directory
 		self.public_url = public_url.rstrip('/')
 		self.upload_password = upload_password
 		self.ffmpeg_path = ffmpeg_path
+		self.volume_boost_db = volume_boost_db
 		self.on_song_uploaded = on_song_uploaded
 		self.on_tags_updated = on_tags_updated
 
@@ -422,6 +424,11 @@ class MusicHttpServer:
 		except Exception as e:
 			logger.error('Upload processing failed: %s', e)
 			return web.json_response({'error': 'Processing failed'}, status=500)
+
+		# Boost volume if configured.
+		if self.volume_boost_db and self.volume_boost_db != 0:
+			from .youtube import boost_volume
+			await boost_volume(ogg_path, self.volume_boost_db, self.ffmpeg_path)
 
 		from tinytag import TinyTag
 		tag_mapping = {

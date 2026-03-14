@@ -132,6 +132,11 @@ class MusicServer(AppConfig):
 			description='Auto-delete downloaded files after N days (0 = never).',
 			default=7,
 		)
+		self.setting_volume_boost_db = Setting(
+			'volume_boost_db', 'Volume boost (dB)', Setting.CAT_BEHAVIOUR, type=int,
+			description='Boost audio volume for downloaded/uploaded songs (in dB). 0 = no boost.',
+			default=5,
+		)
 		self.setting_upload_password = Setting(
 			'upload_password', 'Upload password', Setting.CAT_BEHAVIOUR, type=str,
 			description='Password for the web upload page. Leave empty for no auth.',
@@ -165,6 +170,7 @@ class MusicServer(AppConfig):
 			self.setting_yt_max_duration,
 			self.setting_yt_max_filesize,
 			self.setting_yt_cleanup_after_days,
+			self.setting_volume_boost_db,
 			self.setting_upload_password,
 		)
 
@@ -276,6 +282,7 @@ class MusicServer(AppConfig):
 
 		upload_password = await self.setting_upload_password.get_value()
 		ffmpeg_path = await self.setting_ffmpeg_path.get_value()
+		volume_boost = await self.setting_volume_boost_db.get_value()
 
 		try:
 			self.http_server = MusicHttpServer()
@@ -283,6 +290,7 @@ class MusicServer(AppConfig):
 				host, port, download_dir, public_url,
 				upload_password=upload_password,
 				ffmpeg_path=ffmpeg_path,
+				volume_boost_db=volume_boost,
 				on_song_uploaded=self._on_song_uploaded,
 				on_tags_updated=self._on_tags_updated,
 			)
@@ -695,9 +703,11 @@ class MusicServer(AppConfig):
 			download_dir = await self.setting_yt_download_dir.get_value()
 			max_duration = await self.setting_yt_max_duration.get_value()
 			max_filesize = await self.setting_yt_max_filesize.get_value()
+			volume_boost = await self.setting_volume_boost_db.get_value()
 
 			filepath, tags = await download_audio(
-				url, download_dir, yt_dlp_path, ffmpeg_path, max_duration, max_filesize)
+				url, download_dir, yt_dlp_path, ffmpeg_path, max_duration, max_filesize,
+				volume_boost_db=volume_boost)
 
 			filename = os.path.basename(filepath)
 
