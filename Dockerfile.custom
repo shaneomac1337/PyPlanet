@@ -1,20 +1,21 @@
-FROM python:3.12-slim
+FROM python:3.9-slim
 LABEL maintainer="Custom PyPlanet with Music Server overhaul"
-ENV PROJECT_ROOT /app
-ENV IS_DOCKER 1
+ENV PROJECT_ROOT=/app
+ENV IS_DOCKER=1
 
 # Create maniaplanet user/group
 RUN addgroup --gid 1000 maniaplanet && \
-    adduser -u 1000 --group maniaplanet --system
+    adduser --uid 1000 --ingroup maniaplanet --system maniaplanet
 
-# Install system dependencies + yt-dlp + ffmpeg for music server
+# Install system dependencies + ffmpeg
 RUN apt-get -q update \
     && apt-get install -y --no-install-recommends \
-        build-essential libssl-dev libffi-dev zlib1g-dev ffmpeg \
+        build-essential libssl-dev libffi-dev zlib1g-dev ffmpeg curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install yt-dlp (always fetch latest - YouTube breaks old versions frequently)
-RUN pip install --no-cache-dir --upgrade yt-dlp
+# Install yt-dlp as standalone binary (not pip - avoids Python version conflicts)
+RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
+    && chmod a+rx /usr/local/bin/yt-dlp
 
 # Create project root
 RUN mkdir -p $PROJECT_ROOT
