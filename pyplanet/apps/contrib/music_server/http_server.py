@@ -62,6 +62,17 @@ UPLOAD_PAGE_HTML = '''<!DOCTYPE html>
                      border: 1px solid #1a1a2e; background: #16213e; color: #eee;
                      font-size: 0.9rem; margin-top: 0.2rem; }
   .edit-buttons { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+  .file-list { margin: 0.5rem 0; max-height: 150px; overflow-y: auto; }
+  .file-item { font-size: 0.85rem; color: #aaa; padding: 0.2rem 0;
+               display: flex; justify-content: space-between; }
+  .file-item.done { color: #4ade80; }
+  .file-item.error { color: #f87171; }
+  .file-item.uploading { color: #60a5fa; }
+  .file-item .remove { color: #f87171; cursor: pointer; margin-left: 0.5rem; }
+  .progress-bar { display: none; height: 6px; background: #0f3460; border-radius: 3px;
+                  margin-top: 0.5rem; overflow: hidden; }
+  .progress-bar.active { display: block; }
+  .progress-fill { height: 100%; background: #e94560; width: 0%; transition: width 0.3s; }
 </style>
 </head>
 <body>
@@ -69,13 +80,14 @@ UPLOAD_PAGE_HTML = '''<!DOCTYPE html>
   <h1>Music Server</h1>
 
   <div class="drop-zone" id="dropZone">
-    <p>Drag & drop audio file here</p>
-    <p class="formats">or click to browse</p>
+    <p>Drag & drop audio files here</p>
+    <p class="formats">or click to browse (multiple files supported)</p>
     <p class="formats">Accepts: mp3, ogg, flac, wav, m4a, aac, wma, opus</p>
   </div>
-  <div class="file-name" id="fileName"></div>
+  <div class="file-list" id="fileList"></div>
   <button class="btn" id="uploadBtn" disabled>Upload</button>
   <div class="status" id="status"></div>
+  <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
 
   <div class="songs-list" id="songsList"></div>
 
@@ -103,47 +115,88 @@ const dropZone = document.getElementById('dropZone');
 const fileInput = document.createElement('input');
 fileInput.type = 'file';
 fileInput.accept = '.mp3,.ogg,.flac,.wav,.m4a,.aac,.wma,.opus';
+fileInput.multiple = true;
 const uploadBtn = document.getElementById('uploadBtn');
 const status = document.getElementById('status');
-const fileName = document.getElementById('fileName');
-let selectedFile = null;
+const fileList = document.getElementById('fileList');
+const progressBar = document.getElementById('progressBar');
+const progressFill = document.getElementById('progressFill');
+let selectedFiles = [];
 
 dropZone.addEventListener('click', () => fileInput.click());
 dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
 dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
 dropZone.addEventListener('drop', (e) => {
   e.preventDefault(); dropZone.classList.remove('drag-over');
-  if (e.dataTransfer.files.length) selectFile(e.dataTransfer.files[0]);
+  addFiles(e.dataTransfer.files);
 });
-fileInput.addEventListener('change', () => { if (fileInput.files.length) selectFile(fileInput.files[0]); });
+fileInput.addEventListener('change', () => { addFiles(fileInput.files); fileInput.value = ''; });
 
-function selectFile(file) {
-  selectedFile = file;
-  fileName.textContent = file.name + ' (' + (file.size / 1024 / 1024).toFixed(1) + ' MB)';
-  uploadBtn.disabled = false;
+function addFiles(files) {
+  for (const f of files) selectedFiles.push(f);
+  renderFileList();
+  uploadBtn.disabled = selectedFiles.length === 0;
   status.className = 'status'; status.style.display = 'none';
 }
 
+function removeFile(idx) {
+  selectedFiles.splice(idx, 1);
+  renderFileList();
+  uploadBtn.disabled = selectedFiles.length === 0;
+}
+
+function renderFileList() {
+  fileList.innerHTML = selectedFiles.map((f, i) =>
+    '<div class="file-item" id="fi-' + i + '">' +
+    '<span>' + esc(f.name) + ' (' + (f.size/1024/1024).toFixed(1) + ' MB)</span>' +
+    '<span class="remove" onclick="removeFile(' + i + ')">x</span></div>'
+  ).join('');
+}
+
 uploadBtn.addEventListener('click', async () => {
-  if (!selectedFile) return;
+  if (!selectedFiles.length) return;
   uploadBtn.disabled = true;
-  status.className = 'status progress'; status.textContent = 'Uploading and converting...';
-  const formData = new FormData();
-  formData.append('file', selectedFile);
-  try {
-    const resp = await fetch('/upload', { method: 'POST', body: formData });
-    const data = await resp.json();
-    if (resp.ok) {
-      status.className = 'status success';
-      status.textContent = 'Uploaded: ' + data.title + ' by ' + data.artist;
-      selectedFile = null; fileName.textContent = ''; loadSongs();
-    } else {
-      status.className = 'status error'; status.textContent = data.error || 'Upload failed';
+  progressBar.classList.add('active');
+  const total = selectedFiles.length;
+  let done = 0, failed = 0;
+  status.className = 'status progress';
+  status.textContent = 'Uploading 0/' + total + '...';
+
+  for (let i = 0; i < selectedFiles.length; i++) {
+    const f = selectedFiles[i];
+    const el = document.getElementById('fi-' + i);
+    if (el) el.className = 'file-item uploading';
+    status.textContent = 'Uploading ' + (done+1) + '/' + total + ': ' + f.name;
+    const formData = new FormData();
+    formData.append('file', f);
+    try {
+      const resp = await fetch('/upload', { method: 'POST', body: formData });
+      const data = await resp.json();
+      if (resp.ok) {
+        if (el) { el.className = 'file-item done'; el.querySelector('span').textContent = data.title + ' by ' + data.artist; }
+        done++;
+      } else {
+        if (el) { el.className = 'file-item error'; el.querySelector('span').textContent = f.name + ': ' + (data.error || 'failed'); }
+        failed++;
+      }
+    } catch (e) {
+      if (el) { el.className = 'file-item error'; el.querySelector('span').textContent = f.name + ': ' + e.message; }
+      failed++;
     }
-  } catch (e) {
-    status.className = 'status error'; status.textContent = 'Upload failed: ' + e.message;
+    progressFill.style.width = ((done + failed) / total * 100) + '%';
   }
-  uploadBtn.disabled = false;
+
+  selectedFiles = [];
+  if (failed === 0) {
+    status.className = 'status success';
+    status.textContent = 'All ' + done + ' files uploaded successfully!';
+  } else {
+    status.className = 'status error';
+    status.textContent = done + ' uploaded, ' + failed + ' failed.';
+  }
+  uploadBtn.disabled = true;
+  setTimeout(() => { progressBar.classList.remove('active'); progressFill.style.width = '0%'; }, 2000);
+  loadSongs();
 });
 
 async function loadSongs() {
