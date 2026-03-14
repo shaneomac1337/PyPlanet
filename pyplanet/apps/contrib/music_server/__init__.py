@@ -13,7 +13,7 @@ from pyplanet.apps.config import AppConfig
 from pyplanet.apps.core.maniaplanet import callbacks as mp_signals
 from pyplanet.contrib.command import Command
 from pyplanet.contrib.setting import Setting
-from .view import MusicListView, PlaylistView, FavoritesListView
+from .view import MusicListView, PlaylistView, FavoritesListView, SongManagerView
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +173,7 @@ class MusicServer(AppConfig):
 		await self.instance.permission_manager.register('clear', 'Clear the playlist', app=self, min_level=1)
 		await self.instance.permission_manager.register('shuffle', 'Toggle shuffle mode', app=self, min_level=1)
 		await self.instance.permission_manager.register('nextsong', 'Force next song mid-map', app=self, min_level=1)
+		await self.instance.permission_manager.register('songs', 'Manage song library', app=self, min_level=1)
 
 		# Register base commands.
 		await self.instance.command_manager.register(
@@ -184,6 +185,7 @@ class MusicServer(AppConfig):
 			Command(command='clearplaylist', target=self.clear_playlist, perms='music_server:clear', admin=True),
 			Command(command='shuffle', target=self.toggle_shuffle, perms='music_server:shuffle', admin=True),
 			Command(command='nextsong', target=self.force_next_song, perms='music_server:nextsong', admin=True),
+			Command(command='songs', target=self.manage_songs, perms='music_server:songs', admin=True),
 		)
 
 		# Register vote-skip if enabled.
@@ -333,6 +335,58 @@ class MusicServer(AppConfig):
 		"""Callback from HTTP server when a song is uploaded via web UI."""
 		self.songs.append((song_url, tags))
 		logger.info('[Music] Web upload added to rotation: %s by %s', tags.get('title'), tags.get('artist'))
+
+	# ---- Song manager (admin) ----
+
+	async def manage_songs(self, player, data, **kwargs):
+		"""Admin command to open the song manager."""
+		view = SongManagerView(self)
+		await view.display(player=player.login)
+
+	async def update_song_tag(self, song_url, tag_key, tag_value):
+		"""Update a single tag on a song (both in-memory and on disk)."""
+		# Update in-memory.
+		for i, (url, tags) in enumerate(self.songs):
+			if url == song_url:
+				tags[tag_key] = tag_value
+				self.songs[i] = (url, tags)
+				break
+
+		# Update on disk via ffmpeg.
+		if self.http_server and self.http_server.public_url:
+			prefix = self.http_server.public_url.rstrip('/') + '/music/'
+			if song_url.startswith(prefix):
+				filename = song_url[len(prefix):]
+				download_dir = await self.setting_yt_download_dir.get_value()
+				filepath = os.path.join(download_dir, filename)
+				if os.path.isfile(filepath):
+					# Read current tags, update the changed one, rewrite.
+					from .youtube import get_file_tags, write_ogg_tags
+					current_tags = get_file_tags(filepath)
+					current_tags[tag_key] = tag_value
+					ffmpeg_path = await self.setting_ffmpeg_path.get_value()
+					import shutil as _shutil
+					resolved_ffmpeg = _shutil.which(ffmpeg_path) or ffmpeg_path
+					await write_ogg_tags(filepath, current_tags, resolved_ffmpeg)
+
+	async def remove_song(self, song_url):
+		"""Remove a song from rotation and optionally delete the file."""
+		# Remove from in-memory list.
+		self.songs = [(url, tags) for url, tags in self.songs if url != song_url]
+
+		# Delete file from disk.
+		if self.http_server and self.http_server.public_url:
+			prefix = self.http_server.public_url.rstrip('/') + '/music/'
+			if song_url.startswith(prefix):
+				filename = song_url[len(prefix):]
+				download_dir = await self.setting_yt_download_dir.get_value()
+				filepath = os.path.join(download_dir, filename)
+				if os.path.isfile(filepath):
+					try:
+						os.remove(filepath)
+						logger.info('[Music] Deleted file: %s', filepath)
+					except OSError as e:
+						logger.warning('[Music] Failed to delete %s: %s', filepath, e)
 
 	# ---- Song list & playlist ----
 
