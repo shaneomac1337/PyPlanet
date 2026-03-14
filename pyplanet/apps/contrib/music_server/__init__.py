@@ -175,6 +175,7 @@ class MusicServer(AppConfig):
 		await self.instance.permission_manager.register('play', 'Plays a song from the playlist', app=self, min_level=1)
 		await self.instance.permission_manager.register('clear', 'Clear the playlist', app=self, min_level=1)
 		await self.instance.permission_manager.register('shuffle', 'Toggle shuffle mode', app=self, min_level=1)
+		await self.instance.permission_manager.register('nextsong', 'Force next song mid-map', app=self, min_level=1)
 
 		# Register base commands.
 		await self.instance.command_manager.register(
@@ -185,6 +186,7 @@ class MusicServer(AppConfig):
 			Command(command='playlist', target=self.show_playlist, admin=False),
 			Command(command='clearplaylist', target=self.clear_playlist, perms='music_server:clear', admin=True),
 			Command(command='shuffle', target=self.toggle_shuffle, perms='music_server:shuffle', admin=True),
+			Command(command='nextsong', target=self.force_next_song, perms='music_server:nextsong', admin=True),
 		)
 
 		# Register vote-skip if enabled.
@@ -464,6 +466,12 @@ class MusicServer(AppConfig):
 			self.shuffle_order = []
 			message = '$ff0Shuffle mode $f00disabled$ff0 by $fff{}$z$s$ff0.'.format(player.nickname)
 		await self.instance.chat(message)
+
+	# ---- Force next song ----
+
+	async def force_next_song(self, player, data, **kwargs):
+		"""Admin command to immediately switch to the next song mid-map."""
+		await self._play_next_now()
 
 	# ---- Vote-skip ----
 
